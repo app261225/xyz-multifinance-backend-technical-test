@@ -434,9 +434,7 @@ Proyek ini dilisensikan di bawah MIT License - lihat file LICENSE untuk detail.
 
 ## Kontak
 
-Untuk pertanyaan atau dukungan, silakan hubungi tim pengembangan di:
-- Email: dev@xyz-multifinance.com
-- Website: https://xyz-multifinance.com
+- Email: salambudiarto@gmail.com
 
 ## Changelog
 
