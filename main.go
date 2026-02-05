@@ -3,42 +3,76 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
+	"net/http"
+	"os"
 
 	"main/config"
-	"main/internal/model"
+	"main/internal/handler"
+	"main/internal/middleware"
 	"main/internal/repository"
-	"main/internal/usecase" // Tambah import ini
+	"main/internal/usecase"
 )
 
 func main() {
-	// 1. Koneksi Database
+	// 1. Database Connection
 	db := config.ConnectDB()
+	log.Println("✓ Database connected successfully")
 
-	// 2. Setup Layer (Merakit Aplikasi)
-	// Layer bawah: Repository (butuh DB)
+	// 2. Repository Layer
 	consumerRepo := repository.NewConsumerRepository(db)
+	consumerLimitRepo := repository.NewConsumerLimitRepository(db)
+	transactionRepo := repository.NewTransactionRepository(db)
 
-	// Layer tengah: Usecase (butuh Repository)
-	consumerService := usecase.NewConsumerUsecase(consumerRepo)
+	// 3. Usecase Layer
+	consumerUC := usecase.NewConsumerUsecase(consumerRepo)
+	limitUC := usecase.NewConsumerLimitUsecase(consumerLimitRepo)
+	transactionUC := usecase.NewTransactionUsecase(transactionRepo, consumerLimitRepo)
 
-	// 3. Siapkan Data Dummy
-	// Kita coba data yang valid
-	newConsumer := model.Consumer{
-		NIK:       fmt.Sprintf("NIK-%d", time.Now().Unix()), // Unik
-		FullName:  "Citra Usecase Tester",
-		LegalName: "Citra Resmi",
-		Salary:    25000000,
-		CreatedAt: time.Now(),
+	// 4. Handler Layer
+	consumerHandler := handler.NewConsumerHandler(consumerUC, limitUC)
+	transactionHandler := handler.NewTransactionHandler(transactionUC)
+
+	// 5. Setup Routes with Security Middleware
+	mux := http.NewServeMux()
+
+	// Consumer endpoints
+	mux.HandleFunc("/api/consumers", consumerHandler.RegisterConsumer)
+	mux.HandleFunc("/api/consumers/get", consumerHandler.GetConsumer)
+	mux.HandleFunc("/api/consumers/limits", consumerHandler.AssignLimit)
+	mux.HandleFunc("/api/consumers/limits/get", consumerHandler.GetConsumerLimits)
+
+	// Transaction endpoints
+	mux.HandleFunc("/api/transactions", transactionHandler.CreateTransaction)
+	mux.HandleFunc("/api/transactions/get", transactionHandler.GetTransaction)
+	mux.HandleFunc("/api/transactions/consumer", transactionHandler.GetConsumerTransactions)
+	mux.HandleFunc("/api/transactions/status", transactionHandler.UpdateTransactionStatus)
+
+	// Health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"healthy","version":"1.0.0"}`)
+	})
+
+	// Wrap mux with security middleware
+	chain := middleware.SecurityHeaders(
+		middleware.InputValidation(
+			middleware.CORS(mux),
+		),
+	)
+
+	// 6. Start Server
+	port := os.Getenv("API_PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	fmt.Println("Mencoba mendaftarkan konsumen via Usecase...")
+	log.Printf("✓ Starting API server on port %s\n", port)
+	log.Printf("✓ Health check: http://localhost:%s/health\n", port)
+	log.Printf("✓ OWASP Security Headers: ENABLED\n")
+	log.Printf("✓ Input Validation: ENABLED\n")
+	log.Printf("✓ CORS Protection: ENABLED\n")
 
-	// 4. Panggil Usecase (Bukan Repository langsung)
-	err := consumerService.RegisterConsumer(&newConsumer)
-	if err != nil {
-		log.Fatal("Gagal register:", err)
+	if err := http.ListenAndServe(":"+port, chain); err != nil {
+		log.Fatal("Server error:", err)
 	}
-
-	fmt.Println("Berhasil: Data masuk melalui Validasi Usecase!")
 }

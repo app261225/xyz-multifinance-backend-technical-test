@@ -8,10 +8,13 @@ import (
 	"log"
 	"os"
 
+	"main/internal/model"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 	gorm_mysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func ConnectDB() *gorm.DB {
@@ -31,10 +34,23 @@ func ConnectDB() *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&tls=custom-tls",
 		os.Getenv("DB_USER"), os.Getenv("DB_PASS"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_NAME"))
 
-	db, err := gorm.Open(gorm_mysql.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(gorm_mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		log.Fatal("Gagal koneksi database:", err)
 	}
 
+	// Auto Migration
+	err = db.AutoMigrate(
+		&model.Consumer{},
+		&model.ConsumerLimit{},
+		&model.Transaction{},
+	)
+	if err != nil {
+		log.Fatal("Gagal melakukan migration:", err)
+	}
+
+	log.Println("✓ Database connected and migrated successfully")
 	return db
 }
